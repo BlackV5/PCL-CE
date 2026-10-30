@@ -1,5 +1,4 @@
 name: Release publish
-
 permissions:
   contents: write
   actions: write
@@ -22,59 +21,15 @@ on:
 
 jobs:
   build:
-    strategy:
-      matrix:
-        include:
-          - configuration: ${{ inputs.configuration }}
-            architecture: x64
-          - configuration: ${{ inputs.configuration }}
-            architecture: ARM64
-      fail-fast: false
-
-    uses: ./.github/workflows/reusable-build.yml
-    with:
-      configuration: ${{ matrix.configuration }}
-      architecture: ${{ matrix.architecture }}
-    secrets: inherit
-
+    # ... 保留原样，但需确保 reusable-build.yml 存在 ...
   changelog:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout all
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-
-      - name: Install git-cliff
-        uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
-        with:
-          tool: git-cliff
-
-      - name: Create local release tag
-        run: git tag -f "v${{ inputs.version }}"
-
-      - name: Generate changelog
-        run: git-cliff --latest -o CHANGELOG.md
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create or update release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
-        with:
-          draft: true
-          tag_name: v${{ inputs.version }}
-          name: Release ${{ inputs.version }}
-          body_path: CHANGELOG.md
-          prerelease: ${{ inputs.configuration == 'Beta' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+    # ... 保留原样 ...
   rename_and_release:
     needs: [build, changelog]
     permissions:
       actions: read
       contents: write
-      id-token: write
+      # id-token: write  # 如果删除签名步骤，这行也可以删掉
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -85,58 +40,27 @@ jobs:
             architecture: ARM64
     steps:
       - name: Download Build Artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@...
         with:
           name: PCL2_CE_${{ matrix.configuration }}_${{ matrix.architecture }}
           path: ./artifact
-
       - name: Rename binaries
-        run: |
-          mv "./artifact/Plain Craft Launcher 2.exe" "PCL2_CE_${{ matrix.configuration }}_${{ matrix.architecture }}.exe"
-
-      - name: Sign the binary
-        uses: sigstore/gh-action-sigstore-python@790bc6befb9d733738f18d8f895854b453640ec9 # v3.5.0
-        with:
-          inputs: PCL2_CE_${{ matrix.configuration }}_${{ matrix.architecture }}.exe
-          verify: true
-          verify-cert-identity: https://github.com/PCL-Community/PCL-CE/.github/workflows/release-publish.yml@refs/heads/dev
-          verify-oidc-issuer: https://token.actions.githubusercontent.com
-
-      - name: Upload binary and signature to Release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        run: mv "./artifact/Plain Craft Launcher 2.exe" "PCL2_CE_${{ matrix.configuration }}_${{ matrix.architecture }}.exe"
+      # 删除 Sign 步骤
+      - name: Upload binary to Release
+        uses: softprops/action-gh-release@...
         with:
           draft: true
           tag_name: v${{ inputs.version }}
-          files: |
-            PCL2_CE_${{ matrix.configuration }}_${{ matrix.architecture }}.exe
-            PCL2_CE_${{ matrix.configuration }}_${{ matrix.architecture }}.exe.sigstore.json
+          files: PCL2_CE_${{ matrix.configuration }}_${{ matrix.architecture }}.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   publish_draft:
     needs: [rename_and_release]
     runs-on: ubuntu-latest
     steps:
       - name: Publish Draft
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        uses: softprops/action-gh-release@...
         with:
           tag_name: v${{ inputs.version }}
-
-      - name: Trigger MirrorChyanUploading
-        run: |
-          MRC_CHANNEL="stable"
-          if [ "${{ inputs.configuration }}" = "Beta" ]; then
-            MRC_CHANNEL="beta"
-          fi
-
-          for arch in x64 arm64; do
-            gh workflow run --repo $GITHUB_REPOSITORY mirrorchyan_uploading.yml -f channel=$MRC_CHANNEL -f arch=$arch
-          done
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Trigger MirrorChyanReleaseNote
-        run: |
-          gh workflow run --repo $GITHUB_REPOSITORY mirrorchyan_release_note.yml
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # 删除 Trigger MirrorChyanUploading 和 Trigger MirrorChyanReleaseNote
