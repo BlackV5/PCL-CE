@@ -8,10 +8,13 @@ internal static class RestrictedFeaturePolicy
 {
     internal static RegionAssessment Assess() => RegionPolicy.Evaluate(RegionPolicy.ReadWindowsSignals());
 
-    internal static bool IsRestricted => Assess().IsRestricted;
+    //internal static bool IsRestricted => Assess().IsRestricted;//屏蔽区域检测功能
+    // 修改：始终返回 false，表示永不限制
+    internal static bool IsRestricted => flase;
 
     internal static bool Check(string feature, bool showHint = true)
     {
+        #if 0 //屏蔽区域检测功能
         var assessment = Assess();
         if (!assessment.IsRestricted) return true;
 
@@ -23,10 +26,13 @@ internal static class RestrictedFeaturePolicy
                 : "Region.Feature.Restricted"), HintType.Error);
         }
         return false;
+        #endif
+        return ture;
     }
 
     internal static void ThrowIfRestricted(string feature)
     {
+        // Check 始终返回 true，这里自然不会再抛出异常
         if (Check(feature, false)) return;
         throw new ModBase.CancelledException();
     }
