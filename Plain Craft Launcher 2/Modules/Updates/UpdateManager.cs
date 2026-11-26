@@ -40,10 +40,10 @@ public static class UpdateManager
             if (IsCurrentVersionBeta && (int)Config.Update.UpdateChannel != 1)
             {
                 var isNewerThanStable = remoteServer.IsLatest(UpdateChannel.stable,
-                    SystemInfo.IsArm64System ? UpdateArch.arm64 : UpdateArch.x64, SemVer.Parse(ModBase.versionBaseName),
+                    SystemInfo.IsArm64System ? UpdateArch.arm64 : UpdateArch.x64, SemVer.Parse(ModBase.versionSemVer),
                     ModBase.versionCode);
                 var isBetaLatest = remoteServer.IsLatest(UpdateChannel.beta,
-                    SystemInfo.IsArm64System ? UpdateArch.arm64 : UpdateArch.x64, SemVer.Parse(ModBase.versionBaseName),
+                    SystemInfo.IsArm64System ? UpdateArch.arm64 : UpdateArch.x64, SemVer.Parse(ModBase.versionSemVer),
                     ModBase.versionCode);
                 return isNewerThanStable && isBetaLatest
                     ? UpdateEnums.VersionStatus.Latest
@@ -84,7 +84,7 @@ public static class UpdateManager
 
                 ModBase.WriteFile($"{ModBase.pathTemp}CEUpdateLog.md", version.Changelog);
                 ModBase.Log($"[Update] 远程最新版本: {version.VersionName}, 当前版本: {ModBase.versionBaseName}");
-                if (!(SemVer.Parse(version.VersionName) > SemVer.Parse(ModBase.versionBaseName)))
+                if (!(SemVer.Parse(version.VersionName) > SemVer.Parse(ModBase.versionSemVer)))
                     return;
                 if (type == UpdateEnums.UpdateType.PromptOnly)
                 {

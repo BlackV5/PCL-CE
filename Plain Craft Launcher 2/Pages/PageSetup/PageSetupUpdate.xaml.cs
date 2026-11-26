@@ -36,11 +36,11 @@ public partial class PageSetupUpdate
         try
         {
             // 修复：使用 dynamic 绕过命名空间重名导致的编译期类型冲突，
-            // 或者你可以尝试替换为 PCL.Core.App.SemVer.Parse(ModBase.versionBaseName)
+            // 或者你可以尝试替换为 PCL.Core.App.SemVer.Parse(ModBase.versionSemVer)
             if (await UpdateManager.remoteServer.IsLatestAsync(
                     UpdateManager.IsCurrentVersionBeta ? UpdateChannel.beta : UpdateChannel.stable,
                     SystemInfo.IsArm64System ? UpdateArch.arm64 : UpdateArch.x64,
-                    SemVer.Parse(ModBase.versionBaseName),
+                    SemVer.Parse(ModBase.versionSemVer),
                     ModBase.versionCode))
             {
                 ModBase.Log("[Update] 已是最新版本");

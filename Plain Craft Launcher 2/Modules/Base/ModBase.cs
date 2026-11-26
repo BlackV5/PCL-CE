@@ -40,6 +40,8 @@ public static class ModBase
 
     // 下列版本信息由更新器自动修改
     public static readonly string versionBaseName = Basics.VersionName;
+    // 供版本比较使用的语义化版本号 (如 25.1.0-beta)，用户可见版本名不再满足 SemVer 规范
+    public static readonly string versionSemVer = Basics.Metadata.Version.ComparisonVersion;
     public static readonly string versionStandardCode = Basics.Metadata.Version.StandardVersion;
     public static readonly string upstreamVersion = Basics.Metadata.Version.UpstreamVersion;
     public static readonly string commitHash = Basics.Metadata.Version.Commit;

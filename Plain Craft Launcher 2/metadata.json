@@ -1,10 +1,10 @@
 {
   "name": "Plain Craft Launcher Community Edition",
   "version": {
-    "base": "2.15.1",
+    "base": "25.1",
     "upstream": "2.12.1",
-    "suffix": "beta.fix.1",
-    "code": 525
+    "suffix": "beta",
+    "code": 526
   },
   "licenses": [
     {
