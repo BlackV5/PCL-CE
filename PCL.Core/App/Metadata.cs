@@ -29,13 +29,13 @@ public sealed record LauncherVersionModel(
 
     /// <summary>
     /// 基本版本名, 若 <see cref="Suffix"/> 存在实际值会以 <c>.</c> 附加后缀, 否则与 <see cref="BaseVersion"/> 相同。
-    /// 统一采用 <c>25.1.beta</c> 形式的点分写法, 用于所有用户可见的版本显示。
+    /// 统一采用 <c>25.1</c> 形式的点分写法, 用于所有用户可见的版本显示。
     /// </summary>
     public string BaseName { get; } = BaseVersion + (string.IsNullOrWhiteSpace(Suffix) ? "" : "." + Suffix);
 
     /// <summary>
-    /// 用于版本比较的语义化版本号, 如 <c>25.1.0-beta</c>。
-    /// 用户可见版本名存在省略补丁位的写法 (如 <c>25.1.beta</c>), 不满足 SemVer, 故比较时统一使用此值。
+    /// 用于版本比较的语义化版本号, 如 <c>25.1.0</c>。
+    /// 用户可见版本名存在省略补丁位的写法 (如 <c>25.1</c>), 不满足 SemVer, 故比较时统一使用此值。
     /// </summary>
     public string ComparisonVersion { get; } = _BuildComparisonVersion(BaseVersion, Suffix);
 

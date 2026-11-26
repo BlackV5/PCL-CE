@@ -1,115 +1,183 @@
 name: Release publish
 
+# 触发方式
+#   1. push tag v*        —— 打 tag 即自动构建并发布（推荐）
+#   2. 手动 workflow_dispatch —— 指定版本号与构建配置
+#
+# 与上游的差异：不再用 git-cliff 自动生成变更记录（那会带上全量历史条目与贡献者署名），
+# release 正文一律取自 .github/release-notes/<版本号>.md。
+
 permissions:
   contents: write
   actions: write
 
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
-      configuration:
-        description: 'Build configuration (Beta is published as prerelease)'
+      version:
+        description: '要发布的版本号，不带前导 v（需与 metadata.json 的 base 一致）'
         required: true
-        default: Beta
+        default: '25.1'
+        type: string
+      configuration:
+        description: '构建配置'
+        required: true
+        default: Release
         type: choice
         options:
           - Release
           - Beta
-      version:
-        description: 'Version to release (e.g., 2.14.2)'
+      prerelease:
+        description: '标记为 Pre-release'
         required: true
-        type: string
+        default: false
+        type: boolean
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
+  prepare:
+    name: Resolve parameters
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      configuration: ${{ steps.resolve.outputs.configuration }}
+      prerelease: ${{ steps.resolve.outputs.prerelease }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Resolve parameters
+        id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            CONFIG="Release"
+            PRE="false"
+          else
+            VERSION="${{ inputs.version }}"
+            CONFIG="${{ inputs.configuration }}"
+            PRE="${{ inputs.prerelease }}"
+          fi
+          VERSION="${VERSION#v}"
+          if [ -z "$VERSION" ]; then
+            echo "::error::无法确定版本号"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "configuration=$CONFIG" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRE" >> "$GITHUB_OUTPUT"
+          echo "版本 $VERSION / 配置 $CONFIG / prerelease $PRE"
+
+      - name: Verify version matches metadata.json
+        run: |
+          META=$(python3 -c "import json;print(json.load(open('Plain Craft Launcher 2/metadata.json'))['version']['base'])")
+          echo "metadata.json base = $META"
+          if [ "$META" != "${{ steps.resolve.outputs.version }}" ]; then
+            echo "::error::版本号不一致：metadata.json=$META，本次发布=${{ steps.resolve.outputs.version }}。请先修改 metadata.json 再打 tag。"
+            exit 1
+          fi
+
   build:
+    name: Build
+    needs: [prepare]
     strategy:
       matrix:
-        include:
-          - configuration: ${{ inputs.configuration }}
-            architecture: x64
-          - configuration: ${{ inputs.configuration }}
-            architecture: ARM64
+        architecture: [x64, ARM64]
       fail-fast: false
-
     uses: ./.github/workflows/reusable-build.yml
     with:
-      configuration: ${{ matrix.configuration }}
+      configuration: ${{ needs.prepare.outputs.configuration }}
       architecture: ${{ matrix.architecture }}
     secrets: inherit
 
-  changelog:
+  draft_release:
+    name: Create draft release
+    needs: [prepare, build]
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout all
+      - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
 
-      - name: Install git-cliff
-        uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
-        with:
-          tool: git-cliff
+      - name: Resolve release notes
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          NOTES=".github/release-notes/${VERSION}.md"
+          if [ -f "$NOTES" ]; then
+            echo "使用仓库内说明文件：$NOTES"
+            cp "$NOTES" "$GITHUB_WORKSPACE/release-body.md"
+          else
+            echo "未找到 $NOTES，回退到最小正文"
+            {
+              printf '## Release %s\n\n由 CI 自动构建并发布。\n\n' "$VERSION"
+              printf '| 附件 | 架构 |\n| --- | --- |\n'
+              printf '| `PCL2_CE_%s_x64.exe` | Windows x64 |\n' "$VERSION"
+              printf '| `PCL2_CE_%s_ARM64.exe` | Windows ARM64 |\n' "$VERSION"
+            } > "$GITHUB_WORKSPACE/release-body.md"
+          fi
+          echo '--- 正文预览 ---'
+          head -20 "$GITHUB_WORKSPACE/release-body.md"
 
-      - name: Create local release tag
-        run: git tag -f "v${{ inputs.version }}"
-
-      - name: Generate changelog
-        run: git-cliff --latest -o CHANGELOG.md
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create or update release
+      - name: Create draft release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           draft: true
-          tag_name: v${{ inputs.version }}
-          name: Release ${{ inputs.version }}
-          body_path: CHANGELOG.md
-          prerelease: ${{ inputs.configuration == 'Beta' }}
+          tag_name: v${{ needs.prepare.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: Release ${{ needs.prepare.outputs.version }}
+          body_path: release-body.md
+          prerelease: ${{ needs.prepare.outputs.prerelease }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  rename_and_release:
-    needs: [build, changelog]
-    permissions:
-      actions: read
-      contents: write
+  attach_and_publish:
+    name: Attach assets and publish
+    needs: [prepare, draft_release]
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - configuration: ${{ inputs.configuration }}
-            architecture: x64
-          - configuration: ${{ inputs.configuration }}
-            architecture: ARM64
     steps:
-      - name: Download Build Artifact
+      - name: Download x64 artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: PCL2_CE_${{ matrix.configuration }}_${{ matrix.architecture }}
-          path: ./artifact
+          name: PCL2_CE_${{ needs.prepare.outputs.configuration }}_x64
+          path: ./artifact/x64
+
+      - name: Download ARM64 artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: PCL2_CE_${{ needs.prepare.outputs.configuration }}_ARM64
+          path: ./artifact/ARM64
 
       - name: Rename binaries
         run: |
-          mv "./artifact/Plain Craft Launcher 2.exe" "PCL2_CE_${{ matrix.configuration }}_${{ matrix.architecture }}.exe"
+          mkdir -p dist
+          VERSION="${{ needs.prepare.outputs.version }}"
+          mv "./artifact/x64/Plain Craft Launcher 2.exe"   "dist/PCL2_CE_${VERSION}_x64.exe"
+          mv "./artifact/ARM64/Plain Craft Launcher 2.exe" "dist/PCL2_CE_${VERSION}_ARM64.exe"
+          ls -l dist
+          sha256sum dist/*.exe
 
-      # Sign the binary（已移除：fork 仓库没有 sigstore 签名所需的上游身份）
-      - name: Upload binary to Release
+      - name: Upload assets to draft
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           draft: true
-          tag_name: v${{ inputs.version }}
-          files: PCL2_CE_${{ matrix.configuration }}_${{ matrix.architecture }}.exe
+          tag_name: v${{ needs.prepare.outputs.version }}
+          files: |
+            dist/PCL2_CE_${{ needs.prepare.outputs.version }}_x64.exe
+            dist/PCL2_CE_${{ needs.prepare.outputs.version }}_ARM64.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  publish_draft:
-    needs: [rename_and_release]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Publish Draft
+      - name: Publish release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
-          tag_name: v${{ inputs.version }}
-
-      # Trigger MirrorChyanUploading / MirrorChyanReleaseNote（已移除：fork 仓库没有对应的 MirrorChyan 密钥）
+          draft: false
+          tag_name: v${{ needs.prepare.outputs.version }}
+          prerelease: ${{ needs.prepare.outputs.prerelease }}
+          make_latest: ${{ needs.prepare.outputs.prerelease != 'true' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

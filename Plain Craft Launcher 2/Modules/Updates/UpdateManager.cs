@@ -52,7 +52,7 @@ public static class UpdateManager
 
             return remoteServer.IsLatest(
                 IsCurrentVersionBeta ? UpdateChannel.beta : UpdateChannel.stable,
-                SystemInfo.IsArm64System ? UpdateArch.arm64 : UpdateArch.x64, SemVer.Parse(ModBase.versionBaseName),
+                SystemInfo.IsArm64System ? UpdateArch.arm64 : UpdateArch.x64, SemVer.Parse(ModBase.versionSemVer),
                 ModBase.versionCode)
                 ? UpdateEnums.VersionStatus.Latest
                 : UpdateEnums.VersionStatus.NotLatest;
